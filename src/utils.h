@@ -8,12 +8,45 @@
 
 namespace mx = mlx::core;
 
+// Teach kizunapi how to serialize/deserialize SmallVector<T> (used for Shape
+// and other types in MLX >= 0.26). Mirrors the std::vector<T> specialization.
+namespace ki {
+
+template<typename T, unsigned N, typename A>
+struct Type<mlx::core::SmallVector<T, N, A>> {
+  static constexpr const char* name = "Array";
+  static napi_status ToNode(napi_env env,
+                            const mlx::core::SmallVector<T, N, A>& vec,
+                            napi_value* result) {
+    napi_status s = napi_create_array_with_length(env, vec.size(), result);
+    if (s != napi_ok) return s;
+    for (size_t i = 0; i < vec.size(); ++i) {
+      napi_value el;
+      s = ConvertToNode(env, vec[i], &el);
+      if (s != napi_ok) return s;
+      s = napi_set_element(env, *result, i, el);
+      if (s != napi_ok) return s;
+    }
+    return napi_ok;
+  }
+  static std::optional<mlx::core::SmallVector<T, N, A>> FromNode(
+      napi_env env, napi_value value) {
+    // Read as std::vector then convert to SmallVector.
+    auto vec = Type<std::vector<T>>::FromNode(env, value);
+    if (!vec) return std::nullopt;
+    return mlx::core::SmallVector<T, N, A>(vec->begin(), vec->end());
+  }
+};
+
+}  // namespace ki
+
 using OptionalAxes = std::variant<std::monostate, int, std::vector<int>>;
 using ScalarOrArray = std::variant<bool, float, mx::array>;
 
-// Read args into a vector of types.
-template<typename T>
-bool ReadArgs(ki::Arguments* args, std::vector<T>* results) {
+// Read args into a container of types (vector or SmallVector).
+template<typename Container>
+bool ReadArgs(ki::Arguments* args, Container* results) {
+  using T = typename Container::value_type;
   while (args->RemainingsLength() > 0) {
     std::optional<T> a = args->GetNext<T>();
     if (!a) {
@@ -45,8 +78,15 @@ void DefineToString(napi_env env, napi_value prototype) {
           symbol, ki::MemberFunction(&ToString<T>));
 }
 
+// If input is one int, put it into a Shape, otherwise just return the Shape.
+mx::Shape PutIntoShape(std::variant<int, mx::Shape> shape);
+
 // If input is one int, put it into a vector, otherwise just return the vector.
-std::vector<int> PutIntoVector(std::variant<int, std::vector<int>> shape);
+inline std::vector<int> PutIntoVector(std::variant<int, std::vector<int>> v) {
+  if (auto i = std::get_if<int>(&v); i)
+    return {*i};
+  return std::move(std::get<std::vector<int>>(v));
+}
 
 // Get axis arg from js value.
 std::vector<int> GetReduceAxes(OptionalAxes value, int dims);

@@ -191,7 +191,7 @@ mx::array Full(std::variant<int, mx::Shape> shape,
                ScalarOrArray vals,
                std::optional<mx::Dtype> dtype,
                mx::StreamOrDevice s) {
-  return mx::full(PutIntoVector(std::move(shape)),
+  return mx::full(PutIntoShape(std::move(shape)),
                   ToArray(std::move(vals), std::move(dtype)),
                   s);
 }
@@ -199,13 +199,13 @@ mx::array Full(std::variant<int, mx::Shape> shape,
 mx::array Zeros(std::variant<int, mx::Shape> shape,
                 std::optional<mx::Dtype> dtype,
                 mx::StreamOrDevice s) {
-  return mx::zeros(PutIntoVector(std::move(shape)), dtype.value_or(mx::float32), s);
+  return mx::zeros(PutIntoShape(std::move(shape)), dtype.value_or(mx::float32), s);
 }
 
 mx::array Ones(std::variant<int, mx::Shape> shape,
                std::optional<mx::Dtype> dtype,
                mx::StreamOrDevice s) {
-  return mx::ones(PutIntoVector(std::move(shape)), dtype.value_or(mx::float32), s);
+  return mx::ones(PutIntoShape(std::move(shape)), dtype.value_or(mx::float32), s);
 }
 
 mx::array Eye(int n,
@@ -303,8 +303,9 @@ std::vector<mx::array> Split(const mx::array& a,
   if (auto i = std::get_if<int>(&indices); i) {
     return mx::split(a, *i, axis.value_or(0), s);
   } else {
-    return mx::split(a, std::move(std::get<std::vector<int>>(indices)),
-                     axis.value_or(0), s);
+    auto& v = std::get<std::vector<int>>(indices);
+    mx::Shape shape_indices(v.begin(), v.end());
+    return mx::split(a, std::move(shape_indices), axis.value_or(0), s);
   }
 }
 
@@ -544,7 +545,7 @@ mx::array ConvTranspose1d(
     mx::StreamOrDevice s) {
   return mx::conv_transpose1d(input, weight, stride.value_or(1),
                               padding.value_or(0), dilation.value_or(1),
-                              groups.value_or(1), s);
+                              /*output_padding=*/0, groups.value_or(1), s);
 }
 
 mx::array ConvTranspose2d(
@@ -574,7 +575,7 @@ mx::array ConvTranspose2d(
     dilation_pair = std::move(*p);
 
   return mx::conv_transpose2d(input, weight, stride_pair, padding_pair,
-                              dilation_pair, groups.value_or(1), s);
+                              dilation_pair, {0, 0}, groups.value_or(1), s);
 }
 
 mx::array ConvTranspose3d(
@@ -604,7 +605,7 @@ mx::array ConvTranspose3d(
     dilation_tuple = std::move(*p);
 
   return mx::conv_transpose3d(input, weight, stride_tuple, padding_tuple,
-                              dilation_tuple, groups.value_or(1), s);
+                              dilation_tuple, {0, 0, 0}, groups.value_or(1), s);
 }
 
 mx::array ConvGeneral(
@@ -811,7 +812,9 @@ void InitOps(napi_env env, napi_value exports) {
           "stopGradient", &mx::stop_gradient,
           "sigmoid", &mx::sigmoid,
           "power", BinOpWrapper(&mx::power),
-          "arange", &ops::ARange,
+          "arange", &ops::ARange);
+
+  ki::Set(env, exports,
           "linspace", &ops::Linspace,
           "kron", &mx::kron,
           "take", &ops::Take,
@@ -848,12 +851,16 @@ void InitOps(napi_env env, napi_value exports) {
           "min", DimOpWrapper(&mx::min),
           "max", DimOpWrapper(&mx::max),
           "logcumsumexp", CumOpWrapper(&mx::logcumsumexp),
-          "logsumexp", DimOpWrapper(&mx::logsumexp),
+          "logsumexp", DimOpWrapper(&mx::logsumexp));
+
+  ki::Set(env, exports,
           "mean", DimOpWrapper(&mx::mean),
           "variance", &ops::Var,
           "std", &ops::Std,
           "split", &ops::Split,
-          "argmin", &ops::ArgMin,
+          "argmin", &ops::ArgMin);
+
+  ki::Set(env, exports,
           "argmax", &ops::ArgMax,
           "sort", &ops::Sort,
           "argsort", &ops::ArgSort,
@@ -864,7 +871,9 @@ void InitOps(napi_env env, napi_value exports) {
           "blockMaskedMM", &mx::block_masked_mm,
           "gatherMM", &mx::gather_mm,
           "gatherQMM", &mx::gather_qmm,
-          "softmax", &ops::Softmax,
+          "softmax", &ops::Softmax);
+
+  ki::Set(env, exports,
           "concatenate", &ops::Concatenate,
           "concat", &ops::Concatenate,
           "stack", &ops::Stack,
@@ -876,7 +885,9 @@ void InitOps(napi_env env, napi_value exports) {
           "cumsum", CumOpWrapper(&mx::cumsum),
           "cumprod", CumOpWrapper(&mx::cumprod),
           "cummax", CumOpWrapper(&mx::cummax),
-          "cummin", CumOpWrapper(&mx::cummin),
+          "cummin", CumOpWrapper(&mx::cummin));
+
+  ki::Set(env, exports,
           "conj", &mx::conjugate,
           "conjugate", &mx::conjugate,
           "convolve", &ops::Convolve,
@@ -912,7 +923,9 @@ void InitOps(napi_env env, napi_value exports) {
           "bitwiseXor", BinOpWrapper(&mx::bitwise_xor),
           "leftShift", BinOpWrapper(&mx::left_shift),
           "rightShift", BinOpWrapper(&mx::right_shift),
-          "view", &mx::view,
+          "view", &mx::view);
+
+  ki::Set(env, exports,
           "hadamardTransform", &mx::hadamard_transform,
           "einsumPath", &mx::einsum_path,
           "einsum", &mx::einsum,

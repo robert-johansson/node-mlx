@@ -32,7 +32,7 @@ std::function<mx::array(const mx::array& a,
                         mx::StreamOrDevice s)>
 FFTNOpWrapper(const char* name,
               mx::array(*func1)(const mx::array&,
-                                const std::vector<int>&,
+                                const mx::Shape&,
                                 const std::vector<int>&,
                                 mx::StreamOrDevice),
               mx::array(*func2)(const mx::array&,
@@ -45,16 +45,17 @@ FFTNOpWrapper(const char* name,
                                      std::optional<std::vector<int>> axes,
                                      mx::StreamOrDevice s) {
     if (n && axes) {
-      return mx::fft::fftn(a, std::move(*n), std::move(*axes), s);
+      mx::Shape shape_n(n->begin(), n->end());
+      return func1(a, shape_n, std::move(*axes), s);
     } else if (axes) {
-      return mx::fft::fftn(a, std::move(*axes), s);
+      return func2(a, std::move(*axes), s);
     } else if (n) {
       std::ostringstream msg;
       msg << "[" << name << "] "
           << "`axes` should not be `None` if `s` is not `None`.";
       throw std::invalid_argument(msg.str());
     } else {
-      return mx::fft::fftn(a, s);
+      return func3(a, s);
     }
   };
 }
@@ -66,7 +67,7 @@ std::function<mx::array(const mx::array& a,
                         mx::StreamOrDevice s)>
 FFT2OpWrapper(const char* name,
               mx::array(*func1)(const mx::array&,
-                                const std::vector<int>&,
+                                const mx::Shape&,
                                 const std::vector<int>&,
                                 mx::StreamOrDevice),
               mx::array(*func2)(const mx::array&,

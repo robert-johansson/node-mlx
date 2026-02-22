@@ -1,7 +1,7 @@
 #include "src/array.h"
 #include "src/utils.h"
 
-mx::Shape PutIntoVector(std::variant<int, mx::Shape> shape) {
+mx::Shape PutIntoShape(std::variant<int, mx::Shape> shape) {
   if (auto i = std::get_if<int>(&shape); i)
     return {*i};
   return std::move(std::get<mx::Shape>(shape));

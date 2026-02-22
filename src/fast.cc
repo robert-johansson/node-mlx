@@ -42,16 +42,16 @@ mx::array ScaledDotProductAttention(
         throw std::invalid_argument(msg.str());
       }
       return mx::fast::scaled_dot_product_attention(
-          queries, keys, values, scale, mask_str, {}, s);
+          queries, keys, values, scale, mask_str, {}, {}, s);
     } else {
       auto mask_arr = std::get<mx::array>(mask);
       return mx::fast::scaled_dot_product_attention(
-          queries, keys, values, scale, "", {mask_arr}, s);
+          queries, keys, values, scale, "", {mask_arr}, {}, s);
     }
 
   } else {
     return mx::fast::scaled_dot_product_attention(
-        queries, keys, values, scale, "", {}, s);
+        queries, keys, values, scale, "", {}, {}, s);
   }
 }
 

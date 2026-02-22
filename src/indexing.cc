@@ -563,7 +563,7 @@ ScatterResult ScatterArgsNDimentional(const mx::array* a,
                     a->shape().begin() + non_none_indices, a->shape().end());
   up = mx::reshape(std::move(up), std::move(up_reshape));
 
-  mx::Shape axes(arr_indices.size(), 0);
+  std::vector<int> axes(arr_indices.size(), 0);
   std::iota(axes.begin(), axes.end(), 0);
   return {std::move(arr_indices), std::move(up), std::move(axes)};
 }
