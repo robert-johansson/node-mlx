@@ -790,6 +790,8 @@ void InitOps(napi_env env, napi_value exports) {
           "expm1", &mx::expm1,
           "erf", &mx::erf,
           "erfinv", &mx::erfinv,
+          "lgamma", &mx::lgamma,
+          "digamma", &mx::digamma,
           "sin", &mx::sin,
           "cos", &mx::cos,
           "tan", &mx::tan,

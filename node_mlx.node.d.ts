@@ -240,6 +240,8 @@ declare module '*node_mlx.node' {
   function notEqual(a: ScalarOrArray, b: ScalarOrArray, s?: StreamOrDevice): array;
   function erf(array: ScalarOrArray, s?: StreamOrDevice): array;
   function erfinv(array: ScalarOrArray, s?: StreamOrDevice): array;
+  function lgamma(array: ScalarOrArray, s?: StreamOrDevice): array;
+  function digamma(array: ScalarOrArray, s?: StreamOrDevice): array;
   function exp(array: ScalarOrArray, s?: StreamOrDevice): array;
   function expm1(array: ScalarOrArray, s?: StreamOrDevice): array;
   function expandDims(array: ScalarOrArray, dims: number | number[], s?: StreamOrDevice): array;
