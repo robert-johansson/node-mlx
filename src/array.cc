@@ -483,11 +483,17 @@ napi_value Tidy(napi_env env, std::function<napi_value()> func) {
           // 3. The JS object is marked as dead, but the finalizer has not run.
           // We have to unbind the JS object in 1, and only delete array in 1
           // and 3.
+          int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
           napi_value value;
           if (instance_data->GetWrapper<mx::array>(a, &value))
             napi_remove_wrap(env, value, nullptr);
-          if (instance_data->DeleteWrapper<mx::array>(a))
+          if (instance_data->DeleteWrapper<mx::array>(a)) {
+            if (ext > 0) {
+              int64_t adjusted;
+              napi_adjust_external_memory(env, -ext, &adjusted);
+            }
             delete a;
+          }
         }
         return result;
       },
@@ -504,8 +510,13 @@ void Dispose(const ki::Arguments& args) {
     TreeVisit(args.Env(), args[i],
               [instance_data](napi_env env, napi_value value) {
                 if (auto a = ki::FromNodeTo<mx::array*>(env, value); a) {
+                  int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a.value());
                   napi_remove_wrap(env, value, nullptr);
                   instance_data->DeleteWrapper<mx::array>(a.value());
+                  if (ext > 0) {
+                    int64_t adjusted;
+                    napi_adjust_external_memory(env, -ext, &adjusted);
+                  }
                   delete a.value();
                 }
                 return napi_value();

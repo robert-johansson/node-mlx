@@ -3,4 +3,4 @@
 	url = https://github.com/robert-johansson/mlx
 [submodule "deps/kizunapi"]
 	path = deps/kizunapi
-	url = https://github.com/photoionization/kizunapi
+	url = https://github.com/robert-johansson/kizunapi

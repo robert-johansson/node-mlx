@@ -65,6 +65,28 @@ struct Type<mx::array> : public AllowPassByValue<mx::array> {
                                            napi_value value);
 };
 
+namespace internal {
+
+// Report external memory for mx::array to enable GC pressure signaling.
+// MLX arrays hold Metal GPU buffers that are invisible to the JS GC.
+// Without this, the GC doesn't know about GPU memory pressure and doesn't
+// collect array wrappers fast enough, causing Metal resource exhaustion.
+template<>
+struct ExternalMemorySize<mx::array> {
+  static int64_t Get(mx::array* a) {
+    // Metal has a hard limit of 499K buffer allocations. We must create
+    // enough external memory pressure to force the GC to collect array
+    // wrappers before hitting it. Report 1MB per array as the minimum
+    // external cost — this is much larger than the actual data size but
+    // necessary to trigger sufficiently aggressive GC for GPU resources.
+    size_t n = a->nbytes();
+    constexpr int64_t min_cost = 1024 * 1024;  // 1MB
+    return static_cast<int64_t>(n) > min_cost ? static_cast<int64_t>(n) : min_cost;
+  }
+};
+
+}  // namespace internal
+
 }  // namespace ki
 
 #endif  // SRC_ARRAY_H_
