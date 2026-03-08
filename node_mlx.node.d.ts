@@ -382,6 +382,7 @@ declare module '*node_mlx.node' {
   function tidy<U>(func: () => U): U;
   function dispose(...args: unknown[]): void;
   function getWrappersCount(): number;
+  function sweepDeadArrays(): number;
 
   // Metal.
   namespace metal {

@@ -529,6 +529,25 @@ size_t GetWrappersCount(napi_env env) {
   return ki::InstanceData::Get(env)->GetWrappersCount();
 }
 
+// Synchronously sweep dead array wrappers.
+// Finds arrays whose JS wrappers have been GC'd but whose deferred finalizers
+// haven't run yet, and immediately frees the native Metal buffers.
+// Returns the number of arrays swept.
+size_t SweepDeadArrays(napi_env env) {
+  ki::InstanceData* instance_data = ki::InstanceData::Get(env);
+  auto dead_ptrs = instance_data->CollectDeadWrappers<mx::array>();
+  for (void* ptr : dead_ptrs) {
+    mx::array* a = static_cast<mx::array*>(ptr);
+    int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
+    if (ext > 0) {
+      int64_t adjusted;
+      napi_adjust_external_memory(env, -ext, &adjusted);
+    }
+    delete a;
+  }
+  return dead_ptrs.size();
+}
+
 }  // namespace
 
 namespace ki {
@@ -819,5 +838,6 @@ void InitArray(napi_env env, napi_value exports) {
   ki::Set(env, exports,
           "tidy", &Tidy,
           "dispose", &Dispose,
-          "getWrappersCount", &GetWrappersCount);
+          "getWrappersCount", &GetWrappersCount,
+          "sweepDeadArrays", &SweepDeadArrays);
 }
