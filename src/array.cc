@@ -462,22 +462,28 @@ std::stack<std::set<mx::array*>> g_tidy_arrays;
 
 // Release all array pointers allocated during the call.
 napi_value Tidy(napi_env env, std::function<napi_value()> func) {
-  // Push a new set to stack.
+  // Push a new set to stack. TypeBridge::Wrap inserts arrays here during func().
   g_tidy_arrays.push(std::set<mx::array*>());
-  auto& top = g_tidy_arrays.top();
+  // Shared flag: tracks whether cpp_then already popped the stack.
+  // Prevents double-pop in nested tidy (inner finally must not pop outer set).
+  auto popped = std::make_shared<bool>(false);
   return AwaitFunction(
       env, std::move(func),
-      [&top](napi_env env, napi_value result) {
-        // Exclude the arrays in result from the stack.
+      [popped](napi_env env, napi_value result) {
+        // Move the set out of the stack so it's safe from concurrent modification.
+        auto top = std::move(g_tidy_arrays.top());
+        g_tidy_arrays.pop();
+        *popped = true;
+        // Exclude the arrays in result from the set.
         TreeVisit(env, result, [&top](napi_env env, napi_value value) {
           if (auto a = ki::FromNodeTo<mx::array*>(env, value); a)
             top.erase(*a);
           return napi_value();
         });
-        // Clear the arrays in the stack.
+        // Clear the arrays in the set.
         ki::InstanceData* instance_data = ki::InstanceData::Get(env);
         for (mx::array* a : top) {
-          // The arary might be in 3 states:
+          // The array might be in 3 states:
           // 1. Its JS object is well alive.
           // 2. The JS object has been fully GCed.
           // 3. The JS object is marked as dead, but the finalizer has not run.
@@ -497,9 +503,10 @@ napi_value Tidy(napi_env env, std::function<napi_value()> func) {
         }
         return result;
       },
-      [](napi_env env) {
-        // Always pop even when error happened.
-        g_tidy_arrays.pop();
+      [popped](napi_env env) {
+        // Only pop if cpp_then didn't already handle it.
+        if (!*popped)
+          g_tidy_arrays.pop();
       });
 }
 
