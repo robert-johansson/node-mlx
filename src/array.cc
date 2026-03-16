@@ -485,21 +485,28 @@ napi_value Tidy(napi_env env, std::function<napi_value()> func) {
         for (mx::array* a : top) {
           // The array might be in 3 states:
           // 1. Its JS object is well alive.
-          // 2. The JS object has been fully GCed.
+          // 2. The JS object has been fully GCed (finalizer ran, ptr freed).
           // 3. The JS object is marked as dead, but the finalizer has not run.
-          // We have to unbind the JS object in 1, and only delete array in 1
-          // and 3.
-          int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
+          // We must check wrapper validity BEFORE dereferencing the pointer,
+          // because in state 2 the pointer is dangling (already deleted by
+          // TypeBridge::Finalize during GC).
           napi_value value;
-          if (instance_data->GetWrapper<mx::array>(a, &value))
+          bool has_wrapper = instance_data->GetWrapper<mx::array>(a, &value);
+          if (has_wrapper) {
+            // State 1: JS object alive — unbind it
             napi_remove_wrap(env, value, nullptr);
+          }
+          // Try to claim ownership (returns true for states 1 and 3)
           if (instance_data->DeleteWrapper<mx::array>(a)) {
+            // Safe to dereference: pointer is still valid (not yet finalized)
+            int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
             if (ext > 0) {
               int64_t adjusted;
               napi_adjust_external_memory(env, -ext, &adjusted);
             }
             delete a;
           }
+          // State 2: fully GC'd — skip, pointer is dangling
         }
         return result;
       },
