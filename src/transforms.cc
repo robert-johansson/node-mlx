@@ -281,7 +281,18 @@ ValueAndGradImpl(const char* error_tag,
 namespace transforms_ops {
 
 void Eval(ki::Arguments* args) {
-  mx::eval(TreeFlatten(args));
+  auto arrays = TreeFlatten(args);
+  mx::eval(arrays);
+  // Detach evaluated arrays from the computation graph.
+  // After eval, each array still holds shared_ptr references to its inputs
+  // (for potential re-evaluation or gradient computation). In long-running
+  // processes, these graph chains prevent Metal buffers from being freed,
+  // causing num_resources to grow monotonically until crash.
+  // Since node-mlx manages gradients explicitly via valueAndGrad/grad
+  // (which trace their own graphs), the forward graph is not needed after eval.
+  for (auto& a : arrays) {
+    a.detach();
+  }
 }
 
 napi_value AsyncEval(ki::Arguments* args) {

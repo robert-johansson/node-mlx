@@ -89,4 +89,8 @@ struct ExternalMemorySize<mx::array> {
 
 }  // namespace ki
 
+// Synchronously sweep dead array wrappers whose JS finalizers haven't run yet.
+// Called automatically from Eval() to prevent Metal resource accumulation.
+size_t SweepDeadArrays(napi_env env);
+
 #endif  // SRC_ARRAY_H_

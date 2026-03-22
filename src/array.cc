@@ -349,6 +349,7 @@ napi_value Item(mx::array* a, napi_env env) {
     return nullptr;
   }
   a->eval();
+  a->detach();
   return VisitArrayData([env](auto* data) {
     return ki::ToNodeValue(env, *data);
   }, a);
@@ -383,6 +384,7 @@ napi_value ToList(mx::array* a, napi_env env) {
   if (a->ndim() == 0)
     return Item(a, env);
   a->eval();
+  a->detach();
   return VisitArrayData([env, a](auto* data) {
     return MxArrayToJsArray(env, *a, data);
   }, a);
@@ -409,6 +411,7 @@ napi_value ToTypedArray(mx::array* a, napi_env env) {
       return nullptr;
   }
   a->eval();
+  a->detach();
   // Create a ArrayBuffer that stores a reference to array's data.
   using DataType = std::shared_ptr<mx::array::Data>;
   napi_value buffer;
@@ -543,9 +546,12 @@ size_t GetWrappersCount(napi_env env) {
   return ki::InstanceData::Get(env)->GetWrappersCount();
 }
 
+}  // namespace
+
 // Synchronously sweep dead array wrappers.
 // Finds arrays whose JS wrappers have been GC'd but whose deferred finalizers
 // haven't run yet, and immediately frees the native Metal buffers.
+// Called automatically from Eval() to prevent Metal resource accumulation.
 // Returns the number of arrays swept.
 size_t SweepDeadArrays(napi_env env) {
   ki::InstanceData* instance_data = ki::InstanceData::Get(env);
@@ -561,8 +567,6 @@ size_t SweepDeadArrays(napi_env env) {
   }
   return dead_ptrs.size();
 }
-
-}  // namespace
 
 namespace ki {
 

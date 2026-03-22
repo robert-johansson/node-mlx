@@ -9,5 +9,7 @@ void InitMemory(napi_env env, napi_value exports) {
           "setMemoryLimit", &mx::set_memory_limit,
           "setWiredLimit", &mx::set_wired_limit,
           "setCacheLimit", &mx::set_cache_limit,
-          "clearCache", &mx::clear_cache);
+          "clearCache", &mx::clear_cache,
+          "getNumResources", &mx::get_num_resources,
+          "getResourceLimit", &mx::get_resource_limit);
 }
