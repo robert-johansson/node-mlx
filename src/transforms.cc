@@ -166,11 +166,14 @@ ValueAndGradImpl(const char* error_tag,
     std::iota(gradient_indices.begin(), gradient_indices.end(), 0);
     // The result of |js_func| execution.
     napi_value result = nullptr;
+    // Flag set when the JS callback fails during tracing.
+    bool callback_failed = false;
     // Call value_and_grad with the JS function.
     napi_env env = js_func.Env();
     auto value_and_grad_func = mx::value_and_grad(
         [error_tag, scalar_func_only,
-         &js_func, &args, &argnums, &arrays, &strides, &result, &env](
+         &js_func, &args, &argnums, &arrays, &strides, &result,
+         &callback_failed, &env](
             const std::vector<mx::array>& primals) -> std::vector<mx::array> {
           // Read the args into |js_args| vector, and replace the arrays in it
           // with the traced |primals|.
@@ -191,6 +194,7 @@ ValueAndGradImpl(const char* error_tag,
                                  js_args.size(),
                                  js_args.empty() ? nullptr : &js_args.front(),
                                  &result) != napi_ok) {
+            callback_failed = true;
             return {};
           }
           // Validate the return value.
@@ -240,6 +244,18 @@ ValueAndGradImpl(const char* error_tag,
     // Call the function immediately, because this C++ lambda is actually the
     // result of value_and_grad.
     const auto& [values, gradients] = value_and_grad_func(arrays);
+    // If the JS callback threw during tracing, propagate the error instead
+    // of continuing with garbage results (stale tracer Symbol objects).
+    if (callback_failed) {
+      // Re-throw if there's a pending exception, otherwise create one.
+      bool has_exception = false;
+      napi_is_exception_pending(env, &has_exception);
+      if (!has_exception) {
+        ki::ThrowError(env, error_tag,
+                       " The function threw an error during tracing.");
+      }
+      return {nullptr, nullptr};
+    }
     // Convert gradients to JS value. For array inputs the gradients will be
     // returned, for Array and Object inputs the original arg will be returned
     // with their array properties replaced with corresponding gradients.
