@@ -493,6 +493,7 @@ void InitTransforms(napi_env env, napi_value exports) {
           "grad", &transforms_ops::Grad,
           "vmap", &transforms_ops::VMap,
           "compile", &transforms_ops::Compile,
+          "compileClearCache", &mx::detail::compile_clear_cache,
           "disableCompile", &mx::disable_compile,
           "enableCompile", &mx::enable_compile);
 }
