@@ -347,6 +347,13 @@ mx::array ArgSort(const mx::array& a,
     return mx::argsort(a, s);
 }
 
+mx::array SearchSorted(const mx::array& a,
+                       const mx::array& v,
+                       std::optional<bool> right,
+                       mx::StreamOrDevice s) {
+  return mx::searchsorted(a, v, right.value_or(false), s);
+}
+
 mx::array Softmax(const mx::array& a,
                   OptionalAxes axis,
                   std::optional<bool> precise,
@@ -868,6 +875,7 @@ void InitOps(napi_env env, napi_value exports) {
           "argmax", &ops::ArgMax,
           "sort", &ops::Sort,
           "argsort", &ops::ArgSort,
+          "searchsorted", &ops::SearchSorted,
           "partition", KthOpWrapper(&mx::partition, &mx::partition),
           "argpartition", KthOpWrapper(&mx::argpartition, &mx::argpartition),
           "topk", KthOpWrapper(&mx::topk, &mx::topk),

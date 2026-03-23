@@ -195,6 +195,7 @@ declare module '*node_mlx.node' {
   function argmin(array: ScalarOrArray, axis?: number, keepdims?: boolean, s?: StreamOrDevice): array;
   function argpartition(array: ScalarOrArray, kth: number, axis?: number, s?: StreamOrDevice): array;
   function argsort(array: ScalarOrArray, s?: StreamOrDevice): array;
+  function searchsorted(a: ScalarOrArray, v: ScalarOrArray, right?: boolean, s?: StreamOrDevice): array;
   function arrayEqual(a: ScalarOrArray, b: ScalarOrArray, equalNan?: boolean, s?: StreamOrDevice): array;
   function asStrided(array: ScalarOrArray, shape?: number[], strides?: number[], offset?: number, s?: StreamOrDevice): array;
   function atleast1d(...arrays: array[]): array;
