@@ -39,6 +39,16 @@ napi_value AwaitFunction(
     std::function<napi_value(napi_env, napi_value)> cpp_then,
     std::function<void(napi_env)> cpp_finally) {
   napi_value result = func();
+  // If func() threw a JS exception, skip cpp_then and go straight to cleanup.
+  // Check both the standard exception-pending flag AND null result, because
+  // Bun's N-API implementation does not always set the pending exception flag
+  // when a JS exception occurs inside a native callback.
+  bool has_exception = false;
+  napi_is_exception_pending(env, &has_exception);
+  if (has_exception || result == nullptr) {
+    cpp_finally(env);
+    return nullptr;
+  }
   // Return immediately if the result is not promise.
   bool is_promise = false;
   napi_is_promise(env, result, &is_promise);
