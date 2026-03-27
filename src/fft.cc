@@ -1,27 +1,33 @@
 #include "src/array.h"
 #include "src/stream.h"
 
+// Type aliases for the three FFT function signatures (with FFTNorm parameter).
+using FFTNFunc1 = mx::array(*)(const mx::array&, const mx::Shape&,
+                               const std::vector<int>&,
+                               mx::fft::FFTNorm, mx::StreamOrDevice);
+using FFTNFunc2 = mx::array(*)(const mx::array&, const std::vector<int>&,
+                               mx::fft::FFTNorm, mx::StreamOrDevice);
+using FFTNFunc3 = mx::array(*)(const mx::array&,
+                               mx::fft::FFTNorm, mx::StreamOrDevice);
+
 // A template converter for ops that accept |n| and |axis|.
 inline
 std::function<mx::array(const mx::array& a,
                         std::optional<int> n,
                         std::optional<int> axis,
                         mx::StreamOrDevice s)>
-FFTOpWrapper(mx::array(*func1)(const mx::array&,
-                               int,
-                               int,
-                               mx::StreamOrDevice),
-             mx::array(*func2)(const mx::array&,
-                               int,
-                               mx::StreamOrDevice)) {
+FFTOpWrapper(mx::array(*func1)(const mx::array&, int, int,
+                               mx::fft::FFTNorm, mx::StreamOrDevice),
+             mx::array(*func2)(const mx::array&, int,
+                               mx::fft::FFTNorm, mx::StreamOrDevice)) {
   return [func1, func2](const mx::array& a,
                         std::optional<int> n,
                         std::optional<int> axis,
                         mx::StreamOrDevice s) {
     if (n)
-      return func1(a, *n, axis.value_or(-1), s);
+      return func1(a, *n, axis.value_or(-1), mx::fft::FFTNorm::Backward, s);
     else
-      return func2(a, axis.value_or(-1), s);
+      return func2(a, axis.value_or(-1), mx::fft::FFTNorm::Backward, s);
   };
 }
 
@@ -31,31 +37,23 @@ std::function<mx::array(const mx::array& a,
                         std::optional<std::vector<int>> axes,
                         mx::StreamOrDevice s)>
 FFTNOpWrapper(const char* name,
-              mx::array(*func1)(const mx::array&,
-                                const mx::Shape&,
-                                const std::vector<int>&,
-                                mx::StreamOrDevice),
-              mx::array(*func2)(const mx::array&,
-                                const std::vector<int>&,
-                                mx::StreamOrDevice),
-              mx::array(*func3)(const mx::array&,
-                                mx::StreamOrDevice)) {
+              FFTNFunc1 func1, FFTNFunc2 func2, FFTNFunc3 func3) {
   return [name, func1, func2, func3](const mx::array& a,
                                      std::optional<std::vector<int>> n,
                                      std::optional<std::vector<int>> axes,
                                      mx::StreamOrDevice s) {
     if (n && axes) {
       mx::Shape shape_n(n->begin(), n->end());
-      return func1(a, shape_n, std::move(*axes), s);
+      return func1(a, shape_n, std::move(*axes), mx::fft::FFTNorm::Backward, s);
     } else if (axes) {
-      return func2(a, std::move(*axes), s);
+      return func2(a, std::move(*axes), mx::fft::FFTNorm::Backward, s);
     } else if (n) {
       std::ostringstream msg;
       msg << "[" << name << "] "
           << "`axes` should not be `None` if `s` is not `None`.";
       throw std::invalid_argument(msg.str());
     } else {
-      return func3(a, s);
+      return func3(a, mx::fft::FFTNorm::Backward, s);
     }
   };
 }
@@ -66,15 +64,7 @@ std::function<mx::array(const mx::array& a,
                         std::optional<std::vector<int>> axes,
                         mx::StreamOrDevice s)>
 FFT2OpWrapper(const char* name,
-              mx::array(*func1)(const mx::array&,
-                                const mx::Shape&,
-                                const std::vector<int>&,
-                                mx::StreamOrDevice),
-              mx::array(*func2)(const mx::array&,
-                                const std::vector<int>&,
-                                mx::StreamOrDevice),
-              mx::array(*func3)(const mx::array&,
-                                mx::StreamOrDevice)) {
+              FFTNFunc1 func1, FFTNFunc2 func2, FFTNFunc3 func3) {
   return [name, func1, func2, func3](const mx::array& a,
                                      std::optional<std::vector<int>> n,
                                      std::optional<std::vector<int>> axes,
@@ -89,42 +79,40 @@ void InitFFT(napi_env env, napi_value exports) {
   ki::Set(env, exports, "fft", fft);
 
   ki::Set(env, fft,
-          "fft", FFTOpWrapper(&mx::fft::fft,
-                              &mx::fft::fft),
-          "ifft", FFTOpWrapper(&mx::fft::ifft,
-                               &mx::fft::ifft),
+          "fft", FFTOpWrapper(&mx::fft::fft, &mx::fft::fft),
+          "ifft", FFTOpWrapper(&mx::fft::ifft, &mx::fft::ifft),
           "fft2", FFT2OpWrapper("fft2",
-                                &mx::fft::fftn,
-                                &mx::fft::fftn,
-                                &mx::fft::fftn),
+              static_cast<FFTNFunc1>(&mx::fft::fftn),
+              static_cast<FFTNFunc2>(&mx::fft::fftn),
+              static_cast<FFTNFunc3>(&mx::fft::fftn)),
           "ifft2", FFT2OpWrapper("ifft2",
-                                 &mx::fft::ifftn,
-                                 &mx::fft::ifftn,
-                                 &mx::fft::ifftn),
+              static_cast<FFTNFunc1>(&mx::fft::ifftn),
+              static_cast<FFTNFunc2>(&mx::fft::ifftn),
+              static_cast<FFTNFunc3>(&mx::fft::ifftn)),
           "fftn", FFTNOpWrapper("fftn",
-                                &mx::fft::fftn,
-                                &mx::fft::fftn,
-                                &mx::fft::fftn),
+              static_cast<FFTNFunc1>(&mx::fft::fftn),
+              static_cast<FFTNFunc2>(&mx::fft::fftn),
+              static_cast<FFTNFunc3>(&mx::fft::fftn)),
           "ifftn", FFTNOpWrapper("ifftn",
-                                 &mx::fft::ifftn,
-                                 &mx::fft::ifftn,
-                                 &mx::fft::ifftn),
+              static_cast<FFTNFunc1>(&mx::fft::ifftn),
+              static_cast<FFTNFunc2>(&mx::fft::ifftn),
+              static_cast<FFTNFunc3>(&mx::fft::ifftn)),
           "rfft", FFTOpWrapper(&mx::fft::rfft, &mx::fft::rfft),
           "irfft", FFTOpWrapper(&mx::fft::irfft, &mx::fft::irfft),
           "rfft2", FFT2OpWrapper("rfft2",
-                                 &mx::fft::rfftn,
-                                 &mx::fft::rfftn,
-                                 &mx::fft::rfftn),
+              static_cast<FFTNFunc1>(&mx::fft::rfftn),
+              static_cast<FFTNFunc2>(&mx::fft::rfftn),
+              static_cast<FFTNFunc3>(&mx::fft::rfftn)),
           "irfft2", FFT2OpWrapper("irfft2",
-                                  &mx::fft::irfftn,
-                                  &mx::fft::irfftn,
-                                  &mx::fft::irfftn),
+              static_cast<FFTNFunc1>(&mx::fft::irfftn),
+              static_cast<FFTNFunc2>(&mx::fft::irfftn),
+              static_cast<FFTNFunc3>(&mx::fft::irfftn)),
           "rfftn", FFTNOpWrapper("rfftn",
-                                 &mx::fft::rfftn,
-                                 &mx::fft::rfftn,
-                                 &mx::fft::rfftn),
+              static_cast<FFTNFunc1>(&mx::fft::rfftn),
+              static_cast<FFTNFunc2>(&mx::fft::rfftn),
+              static_cast<FFTNFunc3>(&mx::fft::rfftn)),
           "irfftn", FFTNOpWrapper("irfftn",
-                                  &mx::fft::irfftn,
-                                  &mx::fft::irfftn,
-                                  &mx::fft::irfftn));
+              static_cast<FFTNFunc1>(&mx::fft::irfftn),
+              static_cast<FFTNFunc2>(&mx::fft::irfftn),
+              static_cast<FFTNFunc3>(&mx::fft::irfftn)));
 }
