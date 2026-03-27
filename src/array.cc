@@ -548,24 +548,67 @@ size_t GetWrappersCount(napi_env env) {
 
 }  // namespace
 
-// Synchronously sweep dead array wrappers.
-// Finds arrays whose JS wrappers have been GC'd but whose deferred finalizers
-// haven't run yet, and immediately frees the native Metal buffers.
-// Called automatically from Eval() to prevent Metal resource accumulation.
-// Returns the number of arrays swept.
+// Pending set for double-check sweep. Arrays whose weak references reported
+// null on the first scan are held here and re-checked on the next sweep.
+// This works around a Bun/JSC bug where napi_get_reference_value temporarily
+// returns null for weak references to objects that are still alive.
+#include <unordered_set>
+static std::unordered_set<void*> g_pending_sweep;
+
+// Synchronously sweep dead array wrappers using double-check.
+//
+// Bun's JSC N-API implementation has a bug where weak references temporarily
+// report null (napi_get_reference_value returns nullptr) for objects that are
+// still reachable from JS. A single-check sweep that deletes immediately on
+// null would cause use-after-free when SCI later accesses those arrays.
+//
+// The double-check protocol:
+//   Sweep N:   scan finds null → add to pending set (don't delete)
+//   Sweep N+1: re-check pending → still null = confirmed dead → delete
+//                                  alive again = false positive → keep
+//
+// This adds one sweep cycle of delay before deletion (~50 ops). The pending
+// set is small relative to the wrappers map and the scan is O(pending).
 size_t SweepDeadArrays(napi_env env) {
   ki::InstanceData* instance_data = ki::InstanceData::Get(env);
-  auto dead_ptrs = instance_data->CollectDeadWrappers<mx::array>();
-  for (void* ptr : dead_ptrs) {
-    mx::array* a = static_cast<mx::array*>(ptr);
-    int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
-    if (ext > 0) {
-      int64_t adjusted;
-      napi_adjust_external_memory(env, -ext, &adjusted);
+
+  // Phase 1: Re-check pending items from previous sweep
+  size_t deleted = 0;
+  for (auto it = g_pending_sweep.begin(); it != g_pending_sweep.end(); ) {
+    void* ptr = *it;
+    napi_value value;
+    bool in_map = instance_data->GetWrapper<mx::array>(ptr, &value);
+    if (!in_map) {
+      // Finalizer already ran between sweeps
+      it = g_pending_sweep.erase(it);
+      continue;
     }
-    delete a;
+    if (value == nullptr) {
+      // Still dead on second check — confirmed, delete
+      if (instance_data->DeleteWrapper<mx::array>(ptr)) {
+        mx::array* a = static_cast<mx::array*>(ptr);
+        int64_t ext = ki::internal::ExternalMemorySize<mx::array>::Get(a);
+        if (ext > 0) {
+          int64_t adjusted;
+          napi_adjust_external_memory(env, -ext, &adjusted);
+        }
+        delete a;
+        deleted++;
+      }
+      it = g_pending_sweep.erase(it);
+    } else {
+      // Resurrected — was null, now alive. Bun/JSC false positive.
+      it = g_pending_sweep.erase(it);
+    }
   }
-  return dead_ptrs.size();
+
+  // Phase 2: Scan for newly dead wrappers — mark as pending
+  auto newly_dead = instance_data->ScanDeadWrappers<mx::array>();
+  for (void* ptr : newly_dead) {
+    g_pending_sweep.insert(ptr);
+  }
+
+  return deleted;
 }
 
 namespace ki {
